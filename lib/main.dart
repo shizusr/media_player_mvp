@@ -1,41 +1,66 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
-import 'screens/home_screen.dart';
+import 'app_shell.dart';
+import 'services/app_services.dart';
+import 'theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  runApp(const MediaPlayerApp());
+
+  try {
+    final services = await AppServices.create();
+    runApp(MediaCatalogApp(services: services));
+  } catch (e) {
+    runApp(StartupErrorApp(error: e.toString()));
+  }
 }
 
-class MediaPlayerApp extends StatelessWidget {
-  const MediaPlayerApp({super.key});
+class MediaCatalogApp extends StatelessWidget {
+  const MediaCatalogApp({super.key, required this.services});
+
+  final AppServices services;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: Colors.red,
-      brightness: Brightness.dark,
-    ).copyWith(surface: const Color(0xFF0F0F0F));
+    return ListenableBuilder(
+      listenable: services.settings,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'Media Catalog',
+          debugShowCheckedModeBanner: false,
+          theme: buildLightTheme(),
+          darkTheme: buildDarkTheme(),
+          themeMode: services.settings.themeMode,
+          home: AppShell(services: services),
+        );
+      },
+    );
+  }
+}
 
+class StartupErrorApp extends StatelessWidget {
+  const StartupErrorApp({super.key, required this.error});
+
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Player',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: colorScheme,
-        scaffoldBackgroundColor: const Color(0xFF0F0F0F),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0F0F0F),
-          elevation: 0,
-        ),
-        cardTheme: const CardThemeData(
-          color: Color(0xFF1A1A1A),
-          elevation: 0,
+      theme: buildDarkTheme(),
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SelectableText(
+              'The app could not start.\n\n$error',
+              textAlign: TextAlign.center,
+            ),
+          ),
         ),
       ),
-      home: const HomeScreen(),
     );
   }
 }
