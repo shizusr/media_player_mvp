@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -12,6 +14,9 @@ Future<void> main() async {
   try {
     final services = await AppServices.create();
     runApp(MediaCatalogApp(services: services));
+    if (services.settings.autoRefreshFeed) {
+      unawaited(services.subscriptions.refreshFeed());
+    }
   } catch (e) {
     runApp(StartupErrorApp(error: e.toString()));
   }

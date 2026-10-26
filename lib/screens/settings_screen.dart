@@ -9,6 +9,8 @@ import '../services/app_exception.dart';
 import '../services/app_services.dart';
 import '../services/settings_service.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/subscription_tools.dart';
+import '../widgets/topics_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.services});
@@ -267,6 +269,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
+                  _section('YOUTUBE'),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Autoplay next video'),
+                    subtitle: const Text('Continues with the next video in the list you started from.'),
+                    value: _settings.autoplayNext,
+                    onChanged: _settings.setAutoplayNext,
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Show likes and dislikes'),
+                    subtitle: const Text('Uses the public Return YouTube Dislike service.'),
+                    value: _settings.returnDislike,
+                    onChanged: _settings.setReturnDislike,
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Refresh subscriptions on startup'),
+                    value: _settings.autoRefreshFeed,
+                    onChanged: _settings.setAutoRefreshFeed,
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Preferred audio language'),
+                    subtitle: const Text('For files with several audio tracks.'),
+                    trailing: DropdownButton<String>(
+                      value: _settings.audioLang,
+                      items: const [
+                        DropdownMenuItem(value: 'auto', child: Text('Auto')),
+                        DropdownMenuItem(value: 'ru', child: Text('Russian')),
+                        DropdownMenuItem(value: 'en', child: Text('English')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) _settings.setAudioLang(v);
+                      },
+                    ),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Preferred subtitles'),
+                    subtitle: const Text('Picked automatically when available.'),
+                    trailing: DropdownButton<String>(
+                      value: _settings.subLang,
+                      items: const [
+                        DropdownMenuItem(value: 'off', child: Text('Off')),
+                        DropdownMenuItem(value: 'ru', child: Text('Russian')),
+                        DropdownMenuItem(value: 'en', child: Text('English')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) _settings.setSubLang(v);
+                      },
+                    ),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.tune),
+                    title: const Text('Your interests'),
+                    subtitle: const Text('Topics that build the Home feed.'),
+                    onTap: () => showTopicsDialog(context, widget.services.store),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.upload_file_outlined),
+                    title: const Text('Import subscriptions'),
+                    subtitle: const Text('Google Takeout, NewPipe, FreeTube or OPML file.'),
+                    onTap: () => importSubscriptionsFlow(context, widget.services),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.restart_alt),
+                    title: const Text('Reset Home memory'),
+                    subtitle: const Text('Lets Discover show videos it already showed.'),
+                    onTap: () async {
+                      await widget.services.store.clearSeen();
+                      _toast('Home memory cleared');
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.visibility_outlined),
+                    title: const Text('Show hidden videos and channels again'),
+                    onTap: () async {
+                      await widget.services.store.clearHidden();
+                      widget.services.subscriptions.refreshFeed(force: true);
+                      _toast('Hidden items restored');
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.history),
+                    title: const Text('Clear search history'),
+                    onTap: () async {
+                      await widget.services.store.clearSearchHistory();
+                      _toast('Search history cleared');
+                    },
+                  ),
                   _section('SPONSORBLOCK'),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,

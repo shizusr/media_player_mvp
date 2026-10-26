@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/video_category.dart';
 import '../models/video_item.dart';
+import '../models/yt_models.dart';
 import 'app_exception.dart';
 import 'database_service.dart';
 import 'settings_service.dart';
@@ -114,6 +115,13 @@ class LibraryController extends ChangeNotifier {
     return list;
   }
 
+  VideoItem? byUrl(String url) {
+    for (final v in _videos) {
+      if (v.originalUrl == url) return v;
+    }
+    return null;
+  }
+
   VideoItem? byId(int? id) {
     if (id == null) return null;
     for (final v in _videos) {
@@ -219,6 +227,60 @@ class LibraryController extends ChangeNotifier {
     _videos = [saved, ..._videos];
     notifyListeners();
     return saved;
+  }
+
+  /// Adds a YouTube video that is already known (search result, feed), so
+  /// no extra yt-dlp call is needed. The cover loads from the network.
+  Future<VideoItem> addWebVideo({
+    required String url,
+    required String title,
+    String? thumbnailUrl,
+  }) async {
+    if (byUrl(url) != null) {
+      throw const AppException('This video is already in your library.');
+    }
+    final draft = VideoItem(
+      source: VideoSource.web,
+      originalUrl: url,
+      title: title,
+      thumbnailUrl: thumbnailUrl,
+      categoryId: _filter > 0 ? _filter : null,
+      addedAt: DateTime.now(),
+    );
+    final id = await db.insertVideo(draft);
+    final saved = draft.copyWith(id: id);
+    _videos = [saved, ..._videos];
+    notifyListeners();
+    return saved;
+  }
+
+  /// Imports a whole playlist into a category named after it.
+  Future<int> importPlaylist(PlaylistInfo info) async {
+    final name = info.title.trim().isEmpty ? 'Playlist' : info.title.trim();
+    final categoryId = await _ensureCategory(name);
+    final now = DateTime.now();
+    var added = 0;
+
+    for (var i = 0; i < info.videos.length; i++) {
+      final v = info.videos[i];
+      if (byUrl(v.url) != null) continue;
+      final draft = VideoItem(
+        source: VideoSource.web,
+        originalUrl: v.url,
+        title: v.title,
+        thumbnailUrl: v.coverUrl,
+        categoryId: categoryId,
+        // Keeps the playlist order when sorted by newest.
+        addedAt: now.subtract(Duration(milliseconds: i)),
+      );
+      final id = await db.insertVideo(draft);
+      _videos = [draft.copyWith(id: id), ..._videos];
+      added++;
+    }
+
+    _categories = await db.getCategories();
+    notifyListeners();
+    return added;
   }
 
   /// Adds files from this computer. Returns how many were new.

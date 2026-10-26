@@ -14,6 +14,8 @@ class DatabaseService {
   /// Folder where the database and cover images live.
   late String dataDir;
 
+  ffi.Database get raw => _db;
+
   Future<void> init() async {
     final dir = await getApplicationSupportDirectory();
     await dir.create(recursive: true);
@@ -30,7 +32,7 @@ class DatabaseService {
     _db = await factory.openDatabase(
       p.join(dir.path, 'catalog.db'),
       options: ffi.OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -67,6 +69,52 @@ class DatabaseService {
         setting_value TEXT NOT NULL
       )
     ''');
+    await _createYoutubeTables(db);
+  }
+
+  Future<void> _createYoutubeTables(ffi.Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS channels (
+        channel_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        subscribed_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS feed_items (
+        video_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        channel_name TEXT,
+        title TEXT NOT NULL,
+        published_at INTEGER NOT NULL,
+        views INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS topics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS hidden (
+        kind TEXT NOT NULL,
+        value TEXT NOT NULL,
+        PRIMARY KEY (kind, value)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS search_history (
+        query TEXT PRIMARY KEY,
+        used_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS seen (
+        video_id TEXT PRIMARY KEY,
+        seen_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(ffi.Database db, int oldVersion, int newVersion) async {
@@ -81,6 +129,9 @@ class DatabaseService {
         'ALTER TABLE videos ADD COLUMN watched INTEGER NOT NULL DEFAULT 0',
       );
       await db.execute('ALTER TABLE videos ADD COLUMN last_watched_at INTEGER');
+    }
+    if (oldVersion < 3) {
+      await _createYoutubeTables(db);
     }
   }
 

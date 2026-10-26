@@ -55,6 +55,15 @@ class SettingsService extends ChangeNotifier {
   bool clipboardSuggest = true;
   bool sponsorBlock = true;
   Set<String> sponsorCategories = {'sponsor', 'selfpromo', 'interaction'};
+  bool autoplayNext = true;
+  bool returnDislike = true;
+  bool autoRefreshFeed = true;
+
+  /// 'auto', 'ru' or 'en'.
+  String audioLang = 'auto';
+
+  /// 'off', 'ru' or 'en'.
+  String subLang = 'off';
 
   Future<void> load() async {
     final quality = int.tryParse(await _db.getSetting('max_quality') ?? '');
@@ -96,6 +105,15 @@ class SettingsService extends ChangeNotifier {
 
     clipboardSuggest = (await _db.getSetting('clipboard_suggest') ?? '1') == '1';
     sponsorBlock = (await _db.getSetting('sponsorblock') ?? '1') == '1';
+
+    autoplayNext = (await _db.getSetting('autoplay_next') ?? '1') == '1';
+    returnDislike = (await _db.getSetting('return_dislike') ?? '1') == '1';
+    autoRefreshFeed = (await _db.getSetting('auto_refresh_feed') ?? '1') == '1';
+
+    final audio = await _db.getSetting('audio_lang');
+    if (audio == 'ru' || audio == 'en') audioLang = audio!;
+    final sub = await _db.getSetting('sub_lang');
+    if (sub == 'ru' || sub == 'en') subLang = sub!;
 
     final cats = await _db.getSetting('sponsor_categories');
     if (cats != null) {
@@ -147,6 +165,36 @@ class SettingsService extends ChangeNotifier {
     clipboardSuggest = value;
     notifyListeners();
     await _db.setSetting('clipboard_suggest', value ? '1' : '0');
+  }
+
+  Future<void> setAutoplayNext(bool value) async {
+    autoplayNext = value;
+    notifyListeners();
+    await _db.setSetting('autoplay_next', value ? '1' : '0');
+  }
+
+  Future<void> setReturnDislike(bool value) async {
+    returnDislike = value;
+    notifyListeners();
+    await _db.setSetting('return_dislike', value ? '1' : '0');
+  }
+
+  Future<void> setAutoRefreshFeed(bool value) async {
+    autoRefreshFeed = value;
+    notifyListeners();
+    await _db.setSetting('auto_refresh_feed', value ? '1' : '0');
+  }
+
+  Future<void> setAudioLang(String value) async {
+    audioLang = value;
+    notifyListeners();
+    await _db.setSetting('audio_lang', value);
+  }
+
+  Future<void> setSubLang(String value) async {
+    subLang = value;
+    notifyListeners();
+    await _db.setSetting('sub_lang', value);
   }
 
   Future<void> setSponsorBlock(bool value) async {

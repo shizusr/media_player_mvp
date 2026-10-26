@@ -71,7 +71,16 @@ class VideoCover extends StatelessWidget {
 
   Widget _image(ColorScheme scheme) {
     final path = video.thumbnailPath;
-    if (path == null) return _placeholder(scheme);
+    if (path == null) {
+      final url = video.thumbnailUrl;
+      if (url == null) return _placeholder(scheme);
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        cacheWidth: 640,
+        errorBuilder: (_, __, ___) => _placeholder(scheme),
+      );
+    }
     return Image.file(
       File(path),
       fit: BoxFit.cover,

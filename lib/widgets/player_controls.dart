@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../models/yt_models.dart';
 import '../utils/format.dart';
 
 const List<double> kPlaybackSpeeds = [
@@ -27,6 +28,24 @@ class PlayerUiModel extends ChangeNotifier {
   List<int> heights = const [];
   String? notice;
   String title = '';
+  bool hasNext = false;
+  bool hasPrev = false;
+  String? ratingText;
+  VideoDetails? details;
+  List<Chapter> chapters = const [];
+  List<SubtitleOption> subtitleOptions = const [];
+
+  void resetForVideo(String newTitle) {
+    title = newTitle;
+    heights = const [];
+    qualityLabel = null;
+    selectedHeight = null;
+    notice = null;
+    ratingText = null;
+    details = null;
+    chapters = const [];
+    subtitleOptions = const [];
+  }
 
   void refresh() => notifyListeners();
 }
@@ -44,12 +63,18 @@ class PlayerControls extends StatefulWidget {
     required this.model,
     required this.onSpeedChanged,
     required this.onQualityChanged,
+    required this.onNext,
+    required this.onPrev,
+    required this.onShowInfo,
   });
 
   final VideoState state;
   final PlayerUiModel model;
   final ValueChanged<double> onSpeedChanged;
   final ValueChanged<int?> onQualityChanged;
+  final VoidCallback onNext;
+  final VoidCallback onPrev;
+  final VoidCallback onShowInfo;
 
   @override
   State<PlayerControls> createState() => _PlayerControlsState();
@@ -168,6 +193,28 @@ class _PlayerControlsState extends State<PlayerControls> {
     await _exitFullscreen();
     await Future<void>.delayed(const Duration(milliseconds: 250));
     widget.onQualityChanged(value == 0 ? null : value);
+  }
+
+  Future<void> _openInfo() async {
+    await _exitFullscreen();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    widget.onShowInfo();
+  }
+
+  void _selectSubtitle(Object value) {
+    if (value == 'off') {
+      _player.setSubtitleTrack(SubtitleTrack.no());
+    } else if (value is SubtitleTrack) {
+      _player.setSubtitleTrack(value);
+    } else if (value is SubtitleOption) {
+      final platform = _player.platform;
+      if (platform is NativePlayer) {
+        platform.command(
+          ['sub-add', value.url, 'select', value.label, value.lang],
+        );
+      }
+    }
+    _poke();
   }
 
   Map<ShortcutActivator, VoidCallback> _bindings() {
@@ -381,6 +428,97 @@ class _PlayerControlsState extends State<PlayerControls> {
     );
   }
 
+  String _trackLabel(String? title, String? language, String id) {
+    final parts = [
+      if (title != null && title.isNotEmpty) title,
+      if (language != null && language.isNotEmpty) language,
+    ];
+    return parts.isEmpty ? 'Track $id' : parts.join(' - ');
+  }
+
+  Widget _subtitleMenu() {
+    return StreamBuilder<Tracks>(
+      stream: _player.stream.tracks,
+      initialData: _player.state.tracks,
+      builder: (context, snap) {
+        final tracks = snap.data ?? _player.state.tracks;
+        final embedded = tracks.subtitle
+            .where((t) => t.id != 'auto' && t.id != 'no')
+            .toList();
+        final external = widget.model.subtitleOptions;
+        if (embedded.isEmpty && external.isEmpty) return const SizedBox.shrink();
+
+        return PopupMenuButton<Object>(
+          tooltip: 'Subtitles',
+          icon: const Icon(Icons.closed_caption_outlined, color: Colors.white),
+          onSelected: _selectSubtitle,
+          itemBuilder: (context) => [
+            const PopupMenuItem<Object>(value: 'off', child: Text('Off')),
+            for (final t in embedded)
+              PopupMenuItem<Object>(
+                value: t,
+                child: Text(_trackLabel(t.title, t.language, t.id)),
+              ),
+            for (final o in external)
+              PopupMenuItem<Object>(value: o, child: Text(o.label)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _audioMenu() {
+    return StreamBuilder<Tracks>(
+      stream: _player.stream.tracks,
+      initialData: _player.state.tracks,
+      builder: (context, snap) {
+        final tracks = snap.data ?? _player.state.tracks;
+        final audio =
+            tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+        if (audio.length < 2) return const SizedBox.shrink();
+
+        return PopupMenuButton<AudioTrack>(
+          tooltip: 'Audio track',
+          icon: const Icon(Icons.audiotrack_outlined, color: Colors.white),
+          onSelected: (t) {
+            _player.setAudioTrack(t);
+            _poke();
+          },
+          itemBuilder: (context) => [
+            for (final t in audio)
+              PopupMenuItem<AudioTrack>(
+                value: t,
+                child: Text(_trackLabel(t.title, t.language, t.id)),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _chaptersMenu() {
+    final chapters = widget.model.chapters;
+    if (chapters.isEmpty) return const SizedBox.shrink();
+
+    return PopupMenuButton<int>(
+      tooltip: 'Chapters',
+      icon: const Icon(Icons.list_alt_outlined, color: Colors.white),
+      onSelected: (i) {
+        _player.seek(Duration(milliseconds: (chapters[i].start * 1000).round()));
+        _poke();
+      },
+      itemBuilder: (context) => [
+        for (var i = 0; i < chapters.length; i++)
+          PopupMenuItem<int>(
+            value: i,
+            child: Text(
+              '${formatMs((chapters[i].start * 1000).round())}   ${chapters[i].title}',
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _bottomBar(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 28, 12, 8),
@@ -395,54 +533,86 @@ class _PlayerControlsState extends State<PlayerControls> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _seekBar(context),
-          Row(
-            children: [
-              StreamBuilder<bool>(
-                stream: _player.stream.playing,
-                initialData: _player.state.playing,
-                builder: (context, snap) {
-                  final playing = snap.data ?? false;
-                  return IconButton(
-                    tooltip: 'Play / pause (Space)',
+          ListenableBuilder(
+            listenable: widget.model,
+            builder: (context, _) {
+              return Row(
+                children: [
+                  if (widget.model.hasPrev)
+                    IconButton(
+                      tooltip: 'Previous video',
+                      color: Colors.white,
+                      onPressed: widget.onPrev,
+                      icon: const Icon(Icons.skip_previous),
+                    ),
+                  StreamBuilder<bool>(
+                    stream: _player.stream.playing,
+                    initialData: _player.state.playing,
+                    builder: (context, snap) {
+                      final playing = snap.data ?? false;
+                      return IconButton(
+                        tooltip: 'Play / pause (Space)',
+                        color: Colors.white,
+                        onPressed: _togglePlay,
+                        icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                      );
+                    },
+                  ),
+                  if (widget.model.hasNext)
+                    IconButton(
+                      tooltip: 'Next video',
+                      color: Colors.white,
+                      onPressed: widget.onNext,
+                      icon: const Icon(Icons.skip_next),
+                    ),
+                  IconButton(
+                    tooltip: 'Back 10 s (J)',
                     color: Colors.white,
-                    onPressed: _togglePlay,
-                    icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                  );
-                },
-              ),
-              IconButton(
-                tooltip: 'Back 10 s (J)',
-                color: Colors.white,
-                onPressed: () => _seekBy(-10),
-                icon: const Icon(Icons.replay_10),
-              ),
-              IconButton(
-                tooltip: 'Forward 10 s (L)',
-                color: Colors.white,
-                onPressed: () => _seekBy(10),
-                icon: const Icon(Icons.forward_10),
-              ),
-              _volume(context),
-              const Spacer(),
-              ListenableBuilder(
-                listenable: widget.model,
-                builder: (context, _) {
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _speedMenu(),
-                      if (widget.model.heights.isNotEmpty) _qualityMenu(),
-                    ],
-                  );
-                },
-              ),
-              IconButton(
-                tooltip: 'Fullscreen (F)',
-                color: Colors.white,
-                onPressed: _toggleFullscreen,
-                icon: const Icon(Icons.fullscreen),
-              ),
-            ],
+                    onPressed: () => _seekBy(-10),
+                    icon: const Icon(Icons.replay_10),
+                  ),
+                  IconButton(
+                    tooltip: 'Forward 10 s (L)',
+                    color: Colors.white,
+                    onPressed: () => _seekBy(10),
+                    icon: const Icon(Icons.forward_10),
+                  ),
+                  _volume(context),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _chaptersMenu(),
+                            _subtitleMenu(),
+                            _audioMenu(),
+                            _speedMenu(),
+                            if (widget.model.heights.isNotEmpty) _qualityMenu(),
+                            if (widget.model.details != null)
+                              IconButton(
+                                tooltip: 'Video info',
+                                color: Colors.white,
+                                onPressed: _openInfo,
+                                icon: const Icon(Icons.info_outline),
+                              ),
+                            IconButton(
+                              tooltip: 'Fullscreen (F)',
+                              color: Colors.white,
+                              onPressed: _toggleFullscreen,
+                              icon: const Icon(Icons.fullscreen),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -459,15 +629,30 @@ class _PlayerControlsState extends State<PlayerControls> {
           colors: [Colors.black87, Colors.transparent],
         ),
       ),
-      child: Text(
-        widget.model.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
+      child: ListenableBuilder(
+        listenable: widget.model,
+        builder: (context, _) {
+          return Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.model.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (widget.model.ratingText != null) ...[
+                const SizedBox(width: 12),
+                Text(widget.model.ratingText!, style: _white),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

@@ -19,16 +19,16 @@ import '../widgets/edit_video_dialog.dart';
 import '../widgets/video_card.dart';
 import 'player_screen.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.services});
+class LibraryScreen extends StatefulWidget {
+  const LibraryScreen({super.key, required this.services});
 
   final AppServices services;
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _LibraryScreenState extends State<LibraryScreen> with WidgetsBindingObserver {
   static const List<String> _videoExtensions = [
     'mp4',
     'mkv',
@@ -146,10 +146,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ------------------------------------------------------------------ adding
 
+  bool _isPlaylistUrl(String text) {
+    final uri = Uri.tryParse(text.trim());
+    if (uri == null || !uri.host.contains('youtube.com')) return false;
+    return uri.path == '/playlist' && uri.queryParameters['list'] != null;
+  }
+
+  Future<bool> _importPlaylist(String text) async {
+    try {
+      _toast('Reading the playlist...');
+      final info = await widget.services.ytdlp.playlist(text.trim());
+      if (!mounted) return false;
+      if (info.videos.isEmpty) {
+        _toast('This playlist has no videos.');
+        return false;
+      }
+      final ok = await confirmDialog(
+        context,
+        title: 'Import playlist',
+        message:
+            'Add ${info.videos.length} videos from "${info.title}" to a category with the same name?',
+        confirmLabel: 'Import',
+      );
+      if (!ok) return false;
+      final added = await _library.importPlaylist(info);
+      _toast('Imported $added ${added == 1 ? 'video' : 'videos'}');
+      return true;
+    } catch (e) {
+      _toast(_errorMessage(e));
+      return false;
+    }
+  }
+
   Future<bool> _addLink(String text) async {
     if (_adding) return false;
     setState(() => _adding = true);
     try {
+      if (_isPlaylistUrl(text)) return await _importPlaylist(text);
       final item = await _library.addFromInput(text);
       _toast('Added "${item.title}"');
       return true;
@@ -233,9 +266,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ------------------------------------------------------------------ actions
 
   void _openPlayer(VideoItem video) {
+    final queue = _library.visibleVideos;
+    final index = queue.indexWhere((v) => v.id == video.id);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(video: video, services: widget.services),
+        builder: (_) => PlayerScreen(
+          video: video,
+          services: widget.services,
+          queue: index >= 0 ? queue : [video],
+          queueIndex: index >= 0 ? index : 0,
+        ),
       ),
     );
   }
