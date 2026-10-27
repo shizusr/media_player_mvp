@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'screens/discover_screen.dart';
 import 'screens/library_screen.dart';
+import 'screens/movie_search_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/subscriptions_screen.dart';
@@ -51,6 +52,7 @@ class _AppShellState extends State<AppShell> {
         SearchScreen(services: widget.services),
         SubscriptionsScreen(services: widget.services),
         LibraryScreen(services: widget.services),
+        const MovieSearchScreen(),
         SettingsScreen(services: widget.services),
       ],
     );
@@ -87,6 +89,11 @@ class _AppShellState extends State<AppShell> {
                       icon: Icon(Icons.video_library_outlined),
                       selectedIcon: Icon(Icons.video_library),
                       label: Text('Library'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.movie_outlined),
+                      selectedIcon: Icon(Icons.movie),
+                      label: Text('Cinema'),
                     ),
                     const NavigationRailDestination(
                       icon: Icon(Icons.settings_outlined),
@@ -126,6 +133,11 @@ class _AppShellState extends State<AppShell> {
                 icon: Icon(Icons.video_library_outlined),
                 selectedIcon: Icon(Icons.video_library),
                 label: 'Library',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.movie_outlined),
+                selectedIcon: Icon(Icons.movie),
+                label: 'Cinema',
               ),
               const NavigationDestination(
                 icon: Icon(Icons.settings_outlined),

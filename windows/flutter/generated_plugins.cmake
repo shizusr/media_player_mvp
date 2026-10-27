@@ -4,8 +4,10 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
+  flutter_inappwebview_windows
   media_kit_libs_windows_video
   media_kit_video
+  url_launcher_windows
   volume_controller
 )
 
